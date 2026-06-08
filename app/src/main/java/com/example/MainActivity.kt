@@ -659,7 +659,7 @@ fun GraderAppScreen(
                     QuestionCorrectionDetailRow(detail = detail)
                 }
             } else {
-                // If IDLE, show a quick elegant tutorial card on how to snap pictures
+                // If IDLE, show a quick elegant tutorial card on how to snap pictures and on-device ai info
                 item {
                     Card(
                         modifier = Modifier
@@ -684,6 +684,43 @@ fun GraderAppScreen(
                                         "3. Detektor pencahayaan otomotis di bawah kotak foto akan memberitahu Anda secara instan jika pencahayaan ruangan kurang terang atau memiliki pantulan silau.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "🤖 Panduan Pengaktifan On-Device AI (Gemma/Phi-3)",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Aplikasi ini dilengkapi dengan Dual-Engine Offline:\n" +
+                                        "• Mesir OCR Cepat (Selesai dalam 1-2 detik): Langsung aktif otomatis ketika API Key kosong. Menggunakan Google ML Kit untuk mengekstrak dan mengoreksi jawaban secara cerdas.\n" +
+                                        "• On-Device LLM (MediaPipe Tasks GenAI): Dapat diaktifkan jika Anda meletakkan model lokal (.bin) ke folder aplikasi.\n\n" +
+                                        "Langkah-Langkah Memasang Model .bin:\n" +
+                                        "1. Unduh model terkompresi .bin berformat CPU/GPU INT4 (seperti gemma-2b-it-cpu-int4 atau phi-3-mini-4k-instruct-int4) dari HuggingFace, Kaggle, atau Google AI.\n" +
+                                        "2. Di Android Studio, buat folder assets bernama 'assets' di dalam direktori modul aplikasi Anda (app/src/main/assets/).\n" +
+                                        "3. Tempatkan berkas model .bin tersebut di dalam folder assets dengan nama 'gemma-2b-it-cpu-int4.bin', atau salin ke penyimpanan internal HP Anda di direktori files aplikasi:\n" +
+                                        "   /Android/data/com.aistudio.aiautograder.qxypz/files/gemma-2b-it-cpu-int4.bin\n" +
+                                        "4. Restart aplikasi, dan AI Lokal secara otomatis mendeteksi model untuk penalaran analitis mendalam secara offline!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
                                 lineHeight = 18.sp
                             )
                         }

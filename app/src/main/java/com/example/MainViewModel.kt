@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import android.util.Base64
+import java.io.File
+import com.example.api.OfflineGradingEngine
 
 sealed interface GradingUiState {
     object Idle : GradingUiState
@@ -301,83 +303,107 @@ class MainViewModel : ViewModel() {
     }
 
     fun executeOfflineGrading(context: Context) {
+        val keyUri = _keyImageUri.value
         val studentUri = _studentImageUri.value
-        if (studentUri == null) {
-            _uiState.value = GradingUiState.Error("Silakan pilih Lembar Murid terlebih dahulu.")
+        if (keyUri == null || studentUri == null) {
+            _uiState.value = GradingUiState.Error("Silakan pilih kedua gambar (Kunci Jawaban & Lembar Murid) terlebih dahulu.")
             return
         }
 
-        _uiState.value = GradingUiState.Loading("Membaca Lembar Jawaban Offline...")
+        _uiState.value = GradingUiState.Loading("Menginisialisasi Mesin OCR Offline...")
 
-        viewModelScope.launch {
-            // Simulated local OCR phases for maximum visual feedback / user confidence
-            kotlinx.coroutines.delay(400)
-            _uiState.value = GradingUiState.Loading("Offline Engine: Mendeteksi tulisan tangan...")
-            kotlinx.coroutines.delay(400)
-            _uiState.value = GradingUiState.Loading("Offline Engine: Mencocokkan lembar kunci...")
-            kotlinx.coroutines.delay(400)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Load Bitmaps
+                val keyBitmap = uriToBitmap(context, keyUri)
+                val studentBitmap = uriToBitmap(context, studentUri)
 
-            val hash = Math.abs(studentUri.toString().hashCode())
-            val studentNames = listOf("Ahmad Fauzi", "Siti Aminah", "Rian Wijaya", "Dewi Lestari", "Budi Santoso", "Lutfi Hakim")
-            val nama = studentNames[hash % studentNames.size]
-            
-            val totalQuestions = 25
-            val scoreChoices = listOf(80.0, 84.0, 88.0, 92.0, 96.0, 76.0)
-            val skor = scoreChoices[hash % scoreChoices.size]
-            
-            val jumlahBenar = ((skor / 100.0) * totalQuestions).toInt()
-            val jumlahSalah = totalQuestions - jumlahBenar
-
-            val detailList = mutableListOf<com.example.api.CorrectionDetail>()
-            val pgAnswers = listOf("A", "B", "C", "D")
-            
-            for (i in 1..totalQuestions) {
-                val isCorrect = i > jumlahSalah // Deterministic mapping of correct vs incorrect answers
-                
-                if (i <= 20) {
-                    // Pilihan Ganda (Multiple Choice)
-                    val correctAnswer = pgAnswers[(i * 3) % 4]
-                    val studentAnswer = if (isCorrect) correctAnswer else pgAnswers[(i * 3 + 1) % 4]
-                    detailList.add(
-                        com.example.api.CorrectionDetail(
-                            nomorSoal = i.toString(),
-                            statusBenar = isCorrect,
-                            jawabanMurid = studentAnswer,
-                            jawabanSeharusnya = correctAnswer
-                        )
-                    )
-                } else {
-                    // Isian Singkat / Uraian (Short answers/Essay)
-                    val correctOptions = listOf(
-                        "Simbiosis", "Fotosintesis", "Mamalia", "Reboisasi", "Produsen"
-                    )
-                    val correctAnswer = correctOptions[(i - 21) % correctOptions.size]
-                    val studentAnswer = if (isCorrect) {
-                        if (i % 2 == 0) correctAnswer.lowercase() else correctAnswer
-                    } else {
-                        "Interaksi Sosial"
+                if (keyBitmap == null || studentBitmap == null) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GradingUiState.Error("Gagal membaca berkas gambar secara lokal.")
                     }
-                    detailList.add(
-                        com.example.api.CorrectionDetail(
-                            nomorSoal = i.toString(),
-                            statusBenar = isCorrect,
-                            jawabanMurid = studentAnswer,
-                            jawabanSeharusnya = correctAnswer
-                        )
-                    )
+                    return@launch
+                }
+
+                // 2. Perform OCR on Kunci Jawaban
+                withContext(Dispatchers.Main) {
+                    _uiState.value = GradingUiState.Loading("OCR Offline: Membaca Lembar Kunci Jawaban...")
+                }
+                val keyText = OfflineGradingEngine.extractTextFromBitmap(context, keyBitmap)
+
+                // 3. Perform OCR on Lembar Murid
+                withContext(Dispatchers.Main) {
+                    _uiState.value = GradingUiState.Loading("OCR Offline: Membaca Tulisan Tangan Siswa...")
+                }
+                val studentText = OfflineGradingEngine.extractTextFromBitmap(context, studentBitmap)
+
+                // 4. Run through local models/Heuristics
+                withContext(Dispatchers.Main) {
+                    _uiState.value = GradingUiState.Loading("Mengevaluasi Lembar Jawaban dengan AI Lokal...")
+                }
+
+                val localModelFile = getLocalModelFile(context)
+                val result: GradingResult = if (localModelFile != null) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GradingUiState.Loading("Menjalankan MediaPipe LLM Inference (On-Device)...")
+                    }
+                    val prompt = """
+                        Kamu adalah sistem autograder offline super cerdas. Cocokkan Lembar Murid dengan Kunci Jawaban.
+                        Kunci Jawaban:
+                        $keyText
+                        
+                        Lembar Murid:
+                        $studentText
+                        
+                        Kembalikan hasil grader berformat JSON seperti skema:
+                        {
+                          "nama_murid": "Ahmad Fauzi",
+                          "skor_total": 88.0,
+                          "jumlah_benar": 22,
+                          "jumlah_salah": 3,
+                          "detail_koreksi": [
+                             {
+                               "nomor_soal": "1",
+                               "status_benar": true,
+                               "jawaban_murid": "A",
+                               "jawaban_seharusnya": "A"
+                             }
+                          ]
+                        }
+                    """.trimIndent()
+                    val llmResponse = OfflineGradingEngine.gradeWithMediaPipeLlm(context, localModelFile, prompt)
+                    val cleanJson = extractJson(llmResponse)
+                    val moshi = Moshi.Builder()
+                        .addLast(KotlinJsonAdapterFactory())
+                        .build()
+                    val adapter = moshi.adapter(GradingResult::class.java)
+                    adapter.fromJson(cleanJson) ?: OfflineGradingEngine.gradeOfflineWithOcr(keyText, studentText)
+                } else {
+                    // Fallback to high-accuracy offline smart rule engine (ML Kit Text + Speel Tolerant heuristic matcher)
+                    OfflineGradingEngine.gradeOfflineWithOcr(keyText, studentText)
+                }
+
+                withContext(Dispatchers.Main) {
+                    _uiState.value = GradingUiState.Success(result)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    _uiState.value = GradingUiState.Error("Kesalahan Koreksi Offline: ${e.localizedMessage ?: e.toString()}")
                 }
             }
-
-            val mockResult = com.example.api.GradingResult(
-                namaMurid = nama,
-                skorTotal = skor,
-                jumlahBenar = jumlahBenar,
-                jumlahSalah = jumlahSalah,
-                detailKoreksi = detailList
-            )
-
-            _uiState.value = GradingUiState.Success(mockResult)
         }
+    }
+
+    private fun getLocalModelFile(context: Context): File? {
+        val possiblePaths = listOf(
+            File(context.filesDir, "gemma-2b-it-cpu-int4.bin"),
+            File(context.cacheDir, "gemma-2b-it-cpu-int4.bin"),
+            File(context.getExternalFilesDir(null), "gemma-2b-it-cpu-int4.bin"),
+            File("/data/local/tmp/gemma-2b-it-cpu-int4.bin")
+        )
+        return possiblePaths.firstOrNull { it.exists() }
     }
 
     // --- Helpers ---
