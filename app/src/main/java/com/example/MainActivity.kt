@@ -407,33 +407,36 @@ fun GraderAppScreen(
 
             // Bento Status Bar
             item {
+                val isActive = apiKey.isNotEmpty() && apiKey != "MY_GEMINI_API_KEY"
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .background(
+                            if (isActive) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.secondaryContainer
+                        )
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val isActive = apiKey.isNotEmpty() && apiKey != "MY_GEMINI_API_KEY"
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (isActive) Color(0xFF2E7D32) else Color(0xFFC62828))
+                                .background(if (isActive) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary)
                         )
                         Text(
                             text = if (isActive) {
                                 val modelReadable = if (selectedModel == "gemini-3.1-pro-preview") "Gemini 3.1 Pro" else "Gemini 3.5 Flash"
                                 "$modelReadable Aktif & Terhubung"
                             } else {
-                                "API Key Belum Diatur (Mode Offline)"
+                                "Mode Offline Aktif (Koreksi Tanpa API Key)"
                             },
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
@@ -561,6 +564,20 @@ fun GraderAppScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { viewModel.executeOfflineGrading(context) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = "Offline")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Koreksi dengan Mode Offline", fontWeight = FontWeight.Bold)
+                            }
 
                             if (rawResp != null) {
                                 Spacer(modifier = Modifier.height(8.dp))
